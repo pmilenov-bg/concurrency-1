@@ -2,54 +2,51 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
-	"log"
-	"os"
-	"path/filepath"
 	"sync"
+	"time"
 )
 
-func processFile(filename string) {
-	fmt.Println("Processing file:", filename)
-	// Simulate processing by reading the file contents
-	content, err := ioutil.ReadFile(filename)
-	if err != nil {
-		log.Println("Error reading file:", filename, "-", err)
-		return
+func welcomeMessage(s string, wg *sync.WaitGroup) {
+	fmt.Println(s)
+	wg.Done()
+}
+
+func sendToChannel(filename string, ch chan string, wg *sync.WaitGroup) {
+	defer wg.Done()
+	time.Sleep(100 * time.Millisecond)
+	ch <- fmt.Sprintf("%s is been processed", filename)
+}
+
+func printChannel(ch chan string, wg *sync.WaitGroup) {
+	for data := range ch {
+		fmt.Println(data)
 	}
-	fmt.Println("File contents:", string(content))
 }
 
 func main() {
 	var wg sync.WaitGroup
 
+	wg.Add(1)
+	go welcomeMessage("hello", &wg)
+	fmt.Println("go routine started")
+
+	ch := make(chan string)
 	filenames := []string{"file1.txt", "subdirectory/file2.txt", "file3.txt", "subdirectory/file4.txt", "file5.txt"}
 
+	// Increment wait group count to match the number of files being processed
+	wg.Add(len(filenames))
+
+	// Launch goroutines to process files and send data to the channel
 	for _, filename := range filenames {
-		// pass the file name as a channal <--
-		wg.Add(1)
-		//
-		go func(filename string) { //this func to be subsribed to the above channal
-			defer wg.Done()
-
-			// Get the absolute path of the file
-			absPath, err := filepath.Abs(filename)
-			if err != nil {
-				log.Println("Error getting absolute path of file:", filename, "-", err)
-				return
-			}
-
-			// Check if the file exists
-			_, err = os.Stat(absPath)
-			if os.IsNotExist(err) {
-				log.Println("File not found:", absPath)
-				return
-			}
-
-			processFile(absPath)
-		}(filename)
+		go sendToChannel(filename, ch, &wg)
 	}
 
+	fmt.Println("lets wait")
+
+	// Use a separate goroutine for printing the channel data since it will block
+	go printChannel(ch, &wg)
+
 	wg.Wait()
-	fmt.Println("All files processed.")
+	fmt.Println("last stage")
+	close(ch)
 }
